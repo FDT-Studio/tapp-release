@@ -19,6 +19,8 @@ jobs:
   build:
     name: Build ${{ matrix.target }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_NAME: ${{ github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -93,20 +95,38 @@ jobs:
             flutter build ios --release --no-codesign
           fi
 
+      - name: Rename Android APKs by ABI
+        if: ${{ matrix.target == 'android' }}
+        working-directory: source
+        shell: bash
+        run: |
+          cd build/app/outputs/flutter-apk
+          for apk in app-*-release.apk; do
+            if [[ "$apk" == *"arm64-v8a"* ]]; then
+              mv "$apk" "tapp-${RELEASE_NAME}-arm64.apk"
+            elif [[ "$apk" == *"armeabi-v7a"* ]]; then
+              mv "$apk" "tapp-${RELEASE_NAME}-armeabi-v7a.apk"
+            elif [[ "$apk" == *"x86_64"* ]]; then
+              mv "$apk" "tapp-${RELEASE_NAME}-x86_64.apk"
+            else
+              mv "$apk" "tapp-${RELEASE_NAME}-${apk#app-}"
+            fi
+          done
+
       - name: Compress macOS App
         if: ${{ matrix.target == 'macos' }}
         working-directory: source
         shell: bash
         run: |
           cd build/macos/Build/Products/Release
-          zip -r tapp-macos.zip *.app
+          zip -r tapp-${RELEASE_NAME}-macos.zip *.app
 
       - name: Compress Windows App
         if: ${{ matrix.target == 'windows' }}
         working-directory: source
         shell: pwsh
         run: |
-          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\windows\x64\runner\Release\tapp-windows.zip
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\windows\x64\runner\Release\tapp-$env:RELEASE_NAME-windows.zip
 
       - name: Compress Linux App
         if: ${{ matrix.target == 'linux' }}
@@ -114,7 +134,7 @@ jobs:
         shell: bash
         run: |
           cd build/linux/x64/release
-          zip -r tapp-linux.zip bundle
+          zip -r tapp-${RELEASE_NAME}-linux.zip bundle
 
       - name: Compress iOS App
         if: ${{ matrix.target == 'ios' }}
@@ -122,42 +142,42 @@ jobs:
         shell: bash
         run: |
           cd build/ios/iphoneos
-          zip -r tapp-ios.zip Runner.app
+          zip -r tapp-${RELEASE_NAME}-ios.zip Runner.app
 
       - name: Upload Windows artifact
         if: ${{ matrix.target == 'windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: tapp-windows
-          path: source/build/windows/x64/runner/Release/tapp-windows.zip
+          path: source/build/windows/x64/runner/Release/tapp-${{ env.RELEASE_NAME }}-windows.zip
 
       - name: Upload macOS artifact
         if: ${{ matrix.target == 'macos' }}
         uses: actions/upload-artifact@v4
         with:
           name: tapp-macos
-          path: source/build/macos/Build/Products/Release/tapp-macos.zip
+          path: source/build/macos/Build/Products/Release/tapp-${{ env.RELEASE_NAME }}-macos.zip
 
       - name: Upload Linux artifact
         if: ${{ matrix.target == 'linux' }}
         uses: actions/upload-artifact@v4
         with:
           name: tapp-linux
-          path: source/build/linux/x64/release/tapp-linux.zip
+          path: source/build/linux/x64/release/tapp-${{ env.RELEASE_NAME }}-linux.zip
 
       - name: Upload Android artifact
         if: ${{ matrix.target == 'android' }}
         uses: actions/upload-artifact@v4
         with:
           name: tapp-android-split
-          path: source/build/app/outputs/flutter-apk/app-*-release.apk
+          path: source/build/app/outputs/flutter-apk/tapp-${{ env.RELEASE_NAME }}-*.apk
 
       - name: Upload iOS artifact
         if: ${{ matrix.target == 'ios' }}
         uses: actions/upload-artifact@v4
         with:
           name: tapp-ios
-          path: source/build/ios/iphoneos/tapp-ios.zip
+          path: source/build/ios/iphoneos/tapp-${{ env.RELEASE_NAME }}-ios.zip
 
   release:
     name: Publish GitHub Release
@@ -178,8 +198,8 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
           files: |
-            dist/tapp-windows/tapp-windows.zip
-            dist/tapp-macos/tapp-macos.zip
-            dist/tapp-linux/tapp-linux.zip
-            dist/tapp-android-split/
-            dist/tapp-ios/tapp-ios.zip
+            dist/tapp-windows/tapp-${{ env.RELEASE_NAME }}-windows.zip
+            dist/tapp-macos/tapp-${{ env.RELEASE_NAME }}-macos.zip
+            dist/tapp-linux/tapp-${{ env.RELEASE_NAME }}-linux.zip
+            dist/tapp-android-split/tapp-${{ env.RELEASE_NAME }}-*.apk
+            dist/tapp-ios/tapp-${{ env.RELEASE_NAME }}-ios.zip
