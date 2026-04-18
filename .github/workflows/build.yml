@@ -3,19 +3,14 @@ name: Build Apps
 on:
   workflow_dispatch:
   push:
-    branches:
-      - master
     tags:
       - 'v*'
 
 permissions:
-  contents: read
-
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: false
+  contents: write
 
 jobs:
+
   build:
     name: Build ${{ matrix.target }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -35,24 +30,15 @@ jobs:
             target: ios
 
     steps:
-      - name: Checkout release repo
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Checkout private source repository
-        uses: actions/checkout@v4
-        with:
-          repository: lycorisor/tapp-flutter
-          token: ${{ secrets.PRIVATE_REPO_READ_TOKEN }}
-          path: source
-          fetch-depth: 0
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          channel: "stable"
           cache: true
+
 
       - name: Enable desktop
         if: ${{ matrix.target == 'windows' || matrix.target == 'macos' || matrix.target == 'linux' }}
@@ -73,12 +59,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config libgtk-3-dev libmpv-dev
 
+
       - name: Install dependencies
-        working-directory: source
         run: flutter pub get
 
+
       - name: Build
-        working-directory: source
         shell: bash
         run: |
           if [[ "${{ matrix.target }}" == "windows" ]]; then
@@ -88,14 +74,13 @@ jobs:
           elif [[ "${{ matrix.target }}" == "linux" ]]; then
             flutter build linux --release
           elif [[ "${{ matrix.target }}" == "android" ]]; then
-            flutter build apk --release
+            flutter build apk --release --split-per-abi
           else
             flutter build ios --release --no-codesign
           fi
 
       - name: Compress macOS App
         if: ${{ matrix.target == 'macos' }}
-        working-directory: source
         shell: bash
         run: |
           cd build/macos/Build/Products/Release
@@ -103,14 +88,12 @@ jobs:
 
       - name: Compress Windows App
         if: ${{ matrix.target == 'windows' }}
-        working-directory: source
         shell: pwsh
         run: |
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\windows\x64\runner\Release\tapp-windows.zip
 
       - name: Compress Linux App
         if: ${{ matrix.target == 'linux' }}
-        working-directory: source
         shell: bash
         run: |
           cd build/linux/x64/release
@@ -118,7 +101,6 @@ jobs:
 
       - name: Compress iOS App
         if: ${{ matrix.target == 'ios' }}
-        working-directory: source
         shell: bash
         run: |
           cd build/ios/iphoneos
@@ -129,56 +111,67 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tapp-windows
-          path: source/build/windows/x64/runner/Release/tapp-windows.zip
+          path: build/windows/x64/runner/Release/tapp-windows.zip
+
 
       - name: Upload macOS artifact
         if: ${{ matrix.target == 'macos' }}
         uses: actions/upload-artifact@v4
         with:
           name: tapp-macos
-          path: source/build/macos/Build/Products/Release/tapp-macos.zip
+          path: build/macos/Build/Products/Release/tapp-macos.zip
+
 
       - name: Upload Linux artifact
         if: ${{ matrix.target == 'linux' }}
         uses: actions/upload-artifact@v4
         with:
           name: tapp-linux
-          path: source/build/linux/x64/release/tapp-linux.zip
+          path: build/linux/x64/release/tapp-linux.zip
+
 
       - name: Upload Android artifact
         if: ${{ matrix.target == 'android' }}
         uses: actions/upload-artifact@v4
         with:
-          name: tapp-android
-          path: source/build/app/outputs/flutter-apk/app-release.apk
+          name: tapp-android-split
+          path: build/app/outputs/flutter-apk/app-*-release.apk
+
 
       - name: Upload iOS artifact
         if: ${{ matrix.target == 'ios' }}
         uses: actions/upload-artifact@v4
         with:
           name: tapp-ios
-          path: source/build/ios/iphoneos/tapp-ios.zip
+          path: build/ios/iphoneos/tapp-ios.zip
 
-  release:
-    name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-
-      - name: Publish GitHub Release
+      - name: Publish GitHub Release (Windows)
+        if: ${{ matrix.target == 'windows' && startsWith(github.ref, 'refs/tags/') }}
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/tapp-windows/tapp-windows.zip
-            dist/tapp-macos/tapp-macos.zip
-            dist/tapp-linux/tapp-linux.zip
-            dist/tapp-android/app-release.apk
-            dist/tapp-ios/tapp-ios.zip
+          files: build/windows/x64/runner/Release/tapp-windows.zip
+
+      - name: Publish GitHub Release (macOS)
+        if: ${{ matrix.target == 'macos' && startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/macos/Build/Products/Release/tapp-macos.zip
+
+      - name: Publish GitHub Release (Linux)
+        if: ${{ matrix.target == 'linux' && startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/linux/x64/release/tapp-linux.zip
+
+      - name: Publish GitHub Release (Android)
+        if: ${{ matrix.target == 'android' && startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/app-*-release.apk
+
+
+      - name: Publish GitHub Release (iOS)
+        if: ${{ matrix.target == 'ios' && startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/ios/iphoneos/tapp-ios.zip
