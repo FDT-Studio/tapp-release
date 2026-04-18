@@ -193,13 +193,24 @@ jobs:
         with:
           path: dist
 
+      - name: Verify downloaded release assets
+        shell: bash
+        run: |
+          ls -R dist
+          test -f "dist/tapp-windows/tapp-${GITHUB_REF_NAME}-windows.zip"
+          test -f "dist/tapp-macos/tapp-${GITHUB_REF_NAME}-macos.zip"
+          test -f "dist/tapp-linux/tapp-${GITHUB_REF_NAME}-linux.zip"
+          test -f "dist/tapp-ios/tapp-${GITHUB_REF_NAME}-ios.zip"
+          compgen -G "dist/tapp-android-split/tapp-${GITHUB_REF_NAME}-*.apk" > /dev/null
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
+          fail_on_unmatched_files: true
           files: |
-            dist/tapp-windows/tapp-${{ env.RELEASE_NAME }}-windows.zip
-            dist/tapp-macos/tapp-${{ env.RELEASE_NAME }}-macos.zip
-            dist/tapp-linux/tapp-${{ env.RELEASE_NAME }}-linux.zip
-            dist/tapp-android-split/tapp-${{ env.RELEASE_NAME }}-*.apk
-            dist/tapp-ios/tapp-${{ env.RELEASE_NAME }}-ios.zip
+            dist/tapp-windows/tapp-${{ github.ref_name }}-windows.zip
+            dist/tapp-macos/tapp-${{ github.ref_name }}-macos.zip
+            dist/tapp-linux/tapp-${{ github.ref_name }}-linux.zip
+            dist/tapp-android-split/tapp-${{ github.ref_name }}-*.apk
+            dist/tapp-ios/tapp-${{ github.ref_name }}-ios.zip
